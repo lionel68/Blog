@@ -1,6 +1,6 @@
 ## Aim
 
-This is a repository where I will put (from now on) all the codes that I use in my [blog post](biologyforfun.wordpress.com).
+This is a repository where I will put (from now on) all the codes that I use in my [blog post](https://biologyforfun.wordpress.com).
 
 ## Structure
 
