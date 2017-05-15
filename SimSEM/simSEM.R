@@ -39,20 +39,44 @@ model_list <- function(formL,data,fn=NULL){
   return(modL)
 }
 
+#look at a couple of graphs that are created by the functions
+relL <- list(relation(X=5,C=0.3),relation(X=5,C=0.2),relation(X=10,C=0.3),relation(X=10,C=0.4))
+datL <- list(as.data.frame(matrix(rnorm(5*50,0,1),ncol=5,dimnames = list(1:50,paste0("X",1:5)))),
+             as.data.frame(matrix(rnorm(5*50,0,1),ncol=5,dimnames = list(1:50,paste0("X",1:5)))),
+             as.data.frame(matrix(rnorm(10*50,0,1),ncol=10,dimnames = list(1:50,paste0("X",1:10)))),
+             as.data.frame(matrix(rnorm(10*50,0,1),ncol=10,dimnames = list(1:50,paste0("X",1:10)))))
+formLL <- lapply(relL,function(x) formula_list(x))
+modLL <- mapply(formL=formLL,data=datL,function(formL,data) model_list(formL,data))
+#the figure
+par(mfrow=c(2,2))
+mapply(modL=modLL,data=datL,function(modL,data) sem.plot(modL,data,scaling=NA))
+
 #create a function to get important infos from a sem object
-grab_val <- function(modL,data){
-  semObj <- sem.fit(modL,data,.progressBar = FALSE) #evaluate the independence claims
-  sigM <-ifelse(semObj$Fisher.C$p.value>=0.05,1,0) #get the SEM p-value
-  semCoeff <- sem.coefs(modL,data) #get the model coefficients
-  nbPaths <- nrow(semCoeff)
-  nbSigPaths <- length(which(semCoeff$p.value<=0.05)) #how many significant paths
-  avgSigPaths <- mean(semCoeff$estimate[semCoeff$p.value<=0.05]) #the average values of significant paths
-  out <- data.frame(N=nrow(data),X=ncol(data),C=0.3,sigM=sigM,nbPaths=nbPaths,nbSigPaths=nbSigPaths,avgSigPaths=avgSigPaths)
+grab_val <- function(modL,data,lavaan=FALSE){
+  if(lavaan){
+    lv <- "lavaan"
+    semObj <- sem.lavaan(modL,data)
+    sigM <-ifelse(semObj@test[[1]]$pvalue>=0.05,1,0) #get the SEM p-value
+    semCoeff <- parameterestimates(semObj)[grep("^~$",parameterestimates(semObj)$op),] #get the model coefficients
+    nbPaths <- nrow(semCoeff)
+    nbSigPaths <- length(which(semCoeff$pvalue<=0.05)) #how many significant paths
+    avgSigPaths <- mean(abs(semCoeff$est[semCoeff$pvalue<=0.05])) #the average values of significant paths
+  }
+  else{
+    lv <- "pcSEM"
+    semObj <- sem.fit(modL,data,.progressBar = FALSE) #evaluate the independence claims
+    sigM <-ifelse(semObj$Fisher.C$p.value>=0.05,1,0) #get the SEM p-value
+    semCoeff <- sem.coefs(modL,data) #get the model coefficients
+    nbPaths <- nrow(semCoeff)
+    nbSigPaths <- length(which(semCoeff$p.value<=0.05)) #how many significant paths
+    avgSigPaths <- mean(abs(semCoeff$estimate[semCoeff$p.value<=0.05])) #the average values of significant paths
+  }
+  out <- data.frame(N=nrow(data),X=ncol(data),C=0.3,type=lv,sigM=sigM,nbPaths=nbPaths,nbSigPaths=nbSigPaths,avgSigPaths=avgSigPaths)
   return(out)
 }
  
 #put it all in one function to replicate over
-sim_sem <- function(N=20,X=5,C=0.3,type="random"){
+sim_sem <- function(N=20,X=5,C=0.3,type="random",lv=FALSE){
   formL <- formula_list(relation(X=X,C=C))
   if(type=="random"){
     dat <- as.data.frame(matrix(rnorm(X*N,0,1),ncol=X,dimnames = list(1:N,paste0("X",1:X))))
@@ -61,29 +85,46 @@ sim_sem <- function(N=20,X=5,C=0.3,type="random"){
     stop("Not implemented yet") #one could create datasets with non-random structure, to be implemented
   }
   modL <- model_list(formL,dat)
-  out <- grab_val(modL,dat)
+  out <- grab_val(modL,dat,lavaan=lv)
   return(out)
 }
 
 #test over different sample size (N) and number of variables (X)
-sims <- expand.grid(N=seq(20,100,10),X=5:10,C=0.3)
+sims <- expand.grid(N=seq(20,100,10),X=5:10,C=0.3,lv=FALSE)
 res <- NULL
 for(i in 1:54){
   x <- as.numeric(sims[i,])
-  tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3]))
+  tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3],lv=x[4]))
   out <- as.data.frame(matrix(unlist(tmp),nrow = 100,byrow=TRUE,dimnames=list(1:100,attr(tmp,"dimnames")[[2]])))
   out$Exp <- i
   res <- rbind(res,out)
   print(i)
 }
-
-#average over the different replicates
-res%>%
-  group_by(Exp,N,X)%>%
-  summarise(PropSigM=sum(sigM)/n(),NbPaths = sum(nbPaths),NbSigPaths=sum(nbSigPaths),AvgSigPaths=mean(avgSigPaths,na.rm=TRUE))%>%
+#now same stuff for lavaan
+sims$lv<-TRUE
+reslv <- NULL
+for(i in 1:54){
+  x <- as.numeric(sims[i,])
+  tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3],lv=x[4]))
+  out <- as.data.frame(matrix(unlist(tmp),nrow = 100,byrow=TRUE,dimnames=list(1:100,attr(tmp,"dimnames")[[2]])))
+  out$Exp <- i
+  reslv <- rbind(reslv,out)
+  print(i)
+}
+res$type<-"pcsem"
+reslv$type<-"lv"
+resa<-rbind(res,reslv)
+resa%>%
+  group_by(Exp,N,X,type)%>%
+  summarise(PropSigM=sum(sigM,na.rm=TRUE)/n(),NbPaths = sum(nbPaths),NbSigPaths=sum(nbSigPaths),AvgSigPaths=mean(avgSigPaths,na.rm=TRUE))%>%
   mutate(PropSigPaths=NbSigPaths/NbPaths)->res_dd
 
 #some plots
-ggplot(res_dd,aes(x=N,y=PropSigM))+geom_path()+facet_wrap(~X)
-ggplot(res_dd,aes(x=N,y=PropSigPaths))+geom_path()+facet_wrap(~X)
-ggplot(res_dd,aes(x=N,y=AvgSigPaths))+geom_path()+facet_wrap(~X)
+ggplot(res_dd,aes(x=N,y=PropSigM,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Proportion of model accepted (p>0.05)")
+ggplot(res_dd,aes(x=N,y=PropSigPaths,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Proportion of significant paths (p<0.05)")
+ggplot(res_dd,aes(x=N,y=AvgSigPaths,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Average value of significant paths")
+
+
