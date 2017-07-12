@@ -77,9 +77,44 @@ grab_val <- function(modL,data,lavaan=FALSE){
  
 #put it all in one function to replicate over
 sim_sem <- function(N=20,X=5,C=0.3,type="random",lv=FALSE){
-  formL <- formula_list(relation(X=X,C=C))
+  relL <- relation(X=X,C=C)
+  formL <- formula_list(relL)
   if(type=="random"){
     dat <- as.data.frame(matrix(rnorm(X*N,0,1),ncol=X,dimnames = list(1:N,paste0("X",1:X))))
+  }
+  else if(type=="exact"){
+    dat <- data.frame(X1=runif(N,-2,2))
+    for(f in formL){
+      allv <- all.vars(f)
+      y <- allv[1]
+      xs <- dat[,allv[2:length(allv)]]
+      xs <- as.matrix(cbind(rep(1,N),xs))
+      coeff <- rcauchy(n = ncol(xs),0,2.5)
+      dat<-cbind(dat,rnorm(N,xs%*%coeff,1))
+      colnames(dat)[ncol(dat)]<-y
+      dat <- as.data.frame(apply(dat,2,scale))
+    }
+  }
+  #all causal directions (expect those on the first variable) are reversed
+  #TODO: only reverse a smaller portion of the causal directions
+  else if(type=="shuffled"){
+    relL_m <- relL
+    to_s <- ifelse(floor(sum(relL)*0.2)<1,1,floor(sum(relL)*0.2))
+    #grab values to shuffle
+    
+    relL_m[-1,-1] <- t(relL_m[-1,-1])
+    formL_m <- formula_list(relL_m)
+    dat <- data.frame(X1=runif(N,-2,2))
+    for(f in length(formL_m):1){
+      allv <- all.vars(formL_m[[f]])
+      y <- allv[1]
+      xs <- dat[,allv[2:length(allv)]]
+      xs <- as.matrix(cbind(rep(1,N),xs))
+      coeff <- rcauchy(n = ncol(xs),0,2.5)
+      dat<-cbind(dat,rnorm(N,xs%*%coeff,1))
+      colnames(dat)[ncol(dat)]<-y
+      dat <- as.data.frame(apply(dat,2,scale))
+    }
   }
   else{
     stop("Not implemented yet") #one could create datasets with non-random structure, to be implemented
@@ -127,4 +162,80 @@ ggplot(res_dd,aes(x=N,y=PropSigPaths,color=type))+geom_path()+facet_wrap(~X)+
 ggplot(res_dd,aes(x=N,y=AvgSigPaths,color=type))+geom_path()+facet_wrap(~X)+
   labs(x="Sample size",y="Average value of significant paths")
 
+
+#now simulate the exact distribution for the fitted model
+sims <- expand.grid(N=seq(20,100,10),X=5:10,C=0.3,lv=FALSE)
+res <- NULL
+for(i in 1:54){
+  x <- as.numeric(sims[i,])
+  tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3],lv=x[4],type="exact"))
+  out <- as.data.frame(matrix(unlist(tmp),nrow = 100,byrow=TRUE,dimnames=list(1:100,attr(tmp,"dimnames")[[2]])))
+  out$Exp <- i
+  res <- rbind(res,out)
+  print(i)
+}
+#now same stuff for lavaan
+sims$lv<-TRUE
+reslv <- NULL
+for(i in 1:54){
+  x <- as.numeric(sims[i,])
+  tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3],lv=x[4],type="exact"))
+  out <- as.data.frame(matrix(unlist(tmp),nrow = 100,byrow=TRUE,dimnames=list(1:100,attr(tmp,"dimnames")[[2]])))
+  out$Exp <- i
+  reslv <- rbind(reslv,out)
+  print(i)
+}
+res$type<-"pcsem"
+reslv$type<-"lv"
+resa<-rbind(res,reslv)
+resa%>%
+  group_by(Exp,N,X,type)%>%
+  summarise(PropSigM=sum(sigM,na.rm=TRUE)/n(),NbPaths = sum(nbPaths),NbSigPaths=sum(nbSigPaths),AvgSigPaths=mean(avgSigPaths,na.rm=TRUE))%>%
+  mutate(PropSigPaths=NbSigPaths/NbPaths)->res_dd
+
+#some plots
+ggplot(res_dd,aes(x=N,y=PropSigM,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Proportion of model accepted (p>0.05)")
+ggplot(res_dd,aes(x=N,y=PropSigPaths,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Proportion of significant paths (p<0.05)")
+ggplot(res_dd,aes(x=N,y=AvgSigPaths,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Average value of significant paths")
+
+#now simulate with shuffling the causal directions
+sims <- expand.grid(N=seq(20,100,10),X=5:10,C=0.3,lv=FALSE)
+res <- NULL
+for(i in 1:54){
+  x <- as.numeric(sims[i,])
+  tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3],lv=x[4],type="shuffled"))
+  out <- as.data.frame(matrix(unlist(tmp),nrow = 100,byrow=TRUE,dimnames=list(1:100,attr(tmp,"dimnames")[[2]])))
+  out$Exp <- i
+  res <- rbind(res,out)
+  print(i)
+}
+#now same stuff for lavaan
+sims$lv<-TRUE
+reslv <- NULL
+for(i in 1:54){
+  x <- as.numeric(sims[i,])
+  tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3],lv=x[4],type="exact"))
+  out <- as.data.frame(matrix(unlist(tmp),nrow = 100,byrow=TRUE,dimnames=list(1:100,attr(tmp,"dimnames")[[2]])))
+  out$Exp <- i
+  reslv <- rbind(reslv,out)
+  print(i)
+}
+res$type<-"pcsem"
+reslv$type<-"lv"
+resa<-rbind(res,reslv)
+resa%>%
+  group_by(Exp,N,X,type)%>%
+  summarise(PropSigM=sum(sigM,na.rm=TRUE)/n(),NbPaths = sum(nbPaths),NbSigPaths=sum(nbSigPaths),AvgSigPaths=mean(avgSigPaths,na.rm=TRUE))%>%
+  mutate(PropSigPaths=NbSigPaths/NbPaths)->res_dd
+
+#some plots
+ggplot(res_dd,aes(x=N,y=PropSigM,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Proportion of model accepted (p>0.05)")
+ggplot(res_dd,aes(x=N,y=PropSigPaths,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Proportion of significant paths (p<0.05)")
+ggplot(res_dd,aes(x=N,y=AvgSigPaths,color=type))+geom_path()+facet_wrap(~X)+
+  labs(x="Sample size",y="Average value of significant paths")
 
