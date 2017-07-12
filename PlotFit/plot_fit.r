@@ -12,11 +12,12 @@
 #@focal_var: a character, the name of the focal variable that will be on the x-axis
 #@inter_var: a character or a character vector, the names(s) of the interacting variables, must be declared as factor variables in the model, default is NULL
 #@RE: a charcater or a charcater vector, the name(s) of the random effect variables in the case of a merMod object, default is NULL
+#@offset: a character, the name of the offset variable, note that this effect will be averaged out like other continuous covariates, this is maybe not desirable
 #@n: an integer, the number of generated prediction points, default is 20
 #@n_core: an integer, the number of cores to use in parallel computing for the bootstrapped CI for merMod object, default is 4
 #@boot_mer: a logical, whether to use bootstrapped (TRUE) or a normal approximation (FALSE, the default) for the confidence interval in the case of a merMod model 
 
-plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,n=20,n_core=4,boot_mer=FALSE){
+plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,offset=NULL,n=20,n_core=4,boot_mer=FALSE){
   require(arm)  
   dat<-model.frame(m)
   #turn all character variable to factor
@@ -47,8 +48,11 @@ plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,n=20,n_core=4,boot_mer=FAL
   names(all_var)[1]<-focal_var
   all_var<-expand.grid(all_var)
     
-  #remove varying variables and non-predictors
-  dat_red<-dat[,-c(1,which(names(dat)%in%c(focal_var,inter_var,RE,"X.weights."))),drop=FALSE]
+  #remove varying variables and non-predictors and potentially offset variables
+  if(!is.null(offset)){
+    off_name <- grep("^offset",names(dat),value=TRUE)#this is needed because of the weird offset formatting in the model.frame
+  }
+  dat_red<-dat[,-c(1,which(names(dat)%in%c(focal_var,inter_var,RE,"X.weights.",off_name))),drop=FALSE]
   #if there are no variables left over that need averaging
   if(dim(dat_red)[2]==0){
     new_dat<-all_var
@@ -65,6 +69,10 @@ plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,n=20,n_core=4,boot_mer=FAL
     #get the name of the variable to average over
     name_f<-names(dat_red)[sapply(dat_red,function(x) ifelse(is.factor(x),TRUE,FALSE))]
   }  
+  #add an offset column set at 0 if needed
+  if(!is.null(offset)){
+    new_dat[,offset] <- 0
+  }
       
     
   #get the predicted values
@@ -124,8 +132,8 @@ plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,n=20,n_core=4,boot_mer=FAL
     }
     else{
       se <- sqrt(diag(mm %*% tcrossprod(vcov(m),mm)))
-      pred$LC <- linkinv(pred$pred - 1.96 * se)
-      pred$UC <- linkinv(pred$pred + 1.96 * se)
+      pred$LC <- linkinv(pred$fit - 1.96 * se)
+      pred$UC <- linkinv(pred$fit + 1.96 * se)
     }
   }
     
