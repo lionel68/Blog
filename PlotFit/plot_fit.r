@@ -118,7 +118,7 @@ plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,offset=NULL,n=20,n_core=4,
   #for (G)LMM need to use either bootstrapped CI or use approximate
   #standard error from the variance-covariance matrix
   #see ?predict.merMod and http://glmm.wikidot.com/faq#predconf
-  #not that the bootstrapped option is recommended by the lme4 authors
+  #note that the bootstrapped option is recommended by the lme4 authors
   if(cl=="glmerMod" | cl=="lmerMod"){
     pred$pred<-linkinv(pred$fit)
     if(boot_mer){
