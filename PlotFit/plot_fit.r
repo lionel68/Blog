@@ -49,6 +49,7 @@ plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,offset=NULL,n=20,n_core=4,
   all_var<-expand.grid(all_var)
     
   #remove varying variables and non-predictors and potentially offset variables
+  off_name <- NULL
   if(!is.null(offset)){
     off_name <- grep("^offset",names(dat),value=TRUE)#this is needed because of the weird offset formatting in the model.frame
   }
@@ -131,9 +132,9 @@ plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,offset=NULL,n=20,n_core=4,
       pred$UC<-bb_se[2,] 
     }
     else{
-      se <- sqrt(diag(mm %*% tcrossprod(vcov(m),mm)))
-      pred$LC <- linkinv(pred$fit - 1.96 * se)
-      pred$UC <- linkinv(pred$fit + 1.96 * se)
+      se <- diag(mm %*% tcrossprod(vcov(m),mm))
+      pred$LC <- linkinv(pred$fit - 1.96 * sqrt(se))
+      pred$UC <- linkinv(pred$fit + 1.96 * sqrt(se))
     }
   }
     

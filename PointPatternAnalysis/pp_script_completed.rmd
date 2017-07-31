@@ -1,0 +1,189 @@
+---
+title: "Introduction to point pattern analysis for ecologists"
+author: "Lionel Hertzog"
+date: "July 24, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir="/home/lionel/Desktop/Blog/Stage_2017_terec/")
+```
+
+```{r library, message=FALSE, include=FALSE}
+library(spatstat)
+library(tidyverse)
+```
+
+
+# Introduction to point pattern analysis
+
+Point pattern analysis is a set of techniques to analyze spatial point data. In ecology this type of analysis may arise in several context but make specific assumptions regarding the ways the data were generated, so let's first see what type of ecological data may or may not be relevant for point pattern analysis.
+
+## What data for point pattern analysis?
+
+The most important assumptions of point pattern analysis is that both the number and the location of the points need to be *random*. In addition, we need to know the area that was sampled (so-called _window_). Examples where point pattern analysis is relevant:
+
+* Tree position in a forest plot
+* Ant nests in a grassland patch
+
+Examples not suited for point pattern analysis:
+
+* Community composition at _a priori_ defined subplots forming a regular grid within a larger plot
+* The position of fixed number of bird's nests is recorded within a given area
+
+Examples that may or may not be suited to point pattern analysis:
+
+* Radiotracking data of animal movements (see the numerous techniques available for this specific type of data)
+* Tree position in a forest plot is mapped every year forming a replicated point pattern (see specific chapter in the Bradley book)
+
+## Point pattern in R
+
+The _spatstat_ package provide a large number of functions and classes to work with point pattern data. I will use an example dataset throughout to show some of the (numerous) capacities of this package. This dataset consist of the location of plant and ant nests within a coastal dune system in western europe, you can download the data from this link.
+
+### Creating a point pattern from existing data
+
+```{r}
+#load the dataset
+dat <- read.table("data/Dataset mieren af.csv",sep=";",head=TRUE)
+#put the coords in meters
+dat$X <- dat$X/100
+dat$Y <- dat$Y/100
+
+#creating the point pattern
+(all_pp <- ppp(dat[,"X"],dat[,"Y"],owin(c(0,15),c(0,10))))
+class(all_pp)
+plot(all_pp)
+```
+
+The _spatstat_ package use a special class (the "ppp" class) to deal with point pattern. To create ppp objects we need to use the _ppp_ function, it requires at least three arguments: (i) the x coordinates, (ii) the y coordinates and (iii) the window or the area over which we have recorded the point pattern. For this last argument we can use the _owin_ function to create a window object that will be used by the _ppp_ function. The _owin_ function requires two arguments: (i) the range of x coordinates and (ii) the range of y coordinates.
+
+### Data manipulation of point pattern objects
+
+```{r}
+#a first manipulation would be to add information to each points
+#the so-called marks, in this example we could add the species names
+marks(all_pp) <- dat$Soort
+
+#a second manipulation could be to remove any duplicated points
+#to do this we can use simple row indexing
+all_pp <- unique(all_pp)
+#add the unit
+unitname(all_pp) <- c("meter","meter")
+
+summary(all_pp)
+
+#we could subset the point pattern using the marks
+ant_pp <- subset(all_pp,marks=="Tetramorium_caespitum")
+#in that case we do not need the marks any more
+ant_pp <- unmark(ant_pp)
+```
+ 
+The concept of marks is a pretty important one so I'll spend some extra words on it. Marks can be numeric or factor vector of the same length as the point pattern, these are extra informations that were collected for each points. In this example this is the species names of plants and ants recorded, but this could also be the height of the trees or the number of eggs in bird nests. The marks will automatically be used when plotting the point pattern, try "plot(all_pp)" for instance. Note that you can also pass data frame as marks to have multivariate marks.
+
+A second cool set of manipulation is based on the window, basically one can subset a point pattern to specific windows:
+
+```{r}
+w <- hexagon(centre=c(5,5))
+plot(ant_pp[w])
+```
+
+See ?owin for the many ways available to create windows.
+
+A final manipulation that I'd like to mention now is the _split.ppp_ function, can you guess what it is doing?
+
+```{r}
+#split based on the species names
+split_pp <- split(all_pp)
+class(split_pp)
+as.matrix(lapply(split_pp,npoints),ncol=1)
+#one could also use: by(all_pp,marks(all_pp),npoints)
+
+#split based on a window
+split_ant_pp <- split(ant_pp,f=w)
+summary(split_ant_pp)
+```
+
+I just scratched here the many functionalities that are implemented in the _spatstat_ packages to manipulate point pattern, have a look at the help pages, vignettes and online forum to help you out in this critical step.
+
+### Exploratory analysis of point patterns
+
+This is a very important step in any point pattern analysis, this step can help you: (i) explore the intensity distribution, (ii) see if the point pattern deviates from random expectation, (iii) 
+
+We can easily derive an estimation of the density (or intensity) of the point pattern using the _density_ function:
+
+```{r width=1000,height=1000}
+dens_all <- density(split_pp)
+plot(dens_all)
+```
+
+The first important thing is to find out if the point pattern was generated by one intensity function, in that case the point pattern is homogenous, or if the point pattern was generated by several instensity functions, in that case the point pattern is inhomogenous. This is an important first step in any analysis of point pattern as most functions and models assume homogeneity by default. I will show here two ways to infer the homogeneity of a point pattern: (i) simulation and (ii) quadrat count
+
+The first approach consist in simulating completely spatially random point patterns based on the average intensity in the observed point pattern. If the density estimates of the observed and simulated point patterns are similar then we have evidence that the point pattern is homogenous.
+
+```{r}
+#compare the observed density to randomly simulated ones based on the intensity
+
+#select a random position for the observed data in the figure
+pos <- sample(1:16,1)
+#simulate 15 CSR point pattern
+simp <- rpoispp(lambda = intensity(ant_pp),win = Window(ant_pp),nsim=15)
+#replace the simulated set at the pos'th position by the observed dataset
+tmp <- simp[[pos]]
+simp[[pos]] <- ant_pp
+simp[[16]] <- tmp
+names(simp)[16] <- "Simulation 16"
+#compute density estimates
+densp <- density(simp)
+#plot, can you detect which one was the observed dataset?
+par(mfrow=c(4,4),mar=c(0,0,4,4))
+plot(as.listof(densp),zlim=range(unlist(lapply(densp,range))))
+```
+
+If you can find the real dataset within the simulated ones then there is evidence that an inhomogenous process generated the data. You have to use special functions in that case. 
+
+The second approach consist in dividing the window in quadrats and to count the number of points per quadrat. Using a chi-square test one can infer if the point pattern was homogenous (p > 0.05) or inhomogenous (p < 0.05):
+
+```{r}
+quadrat.test(ant_pp)
+```
+The output tell us that the null hypothesis of the point pattern being generated by complete spatial random process is rejected, we have some evidence that the point pattern is inhomogenous or nonstationary. There is one issue with this approach: one need to define the size of the quadrats, the default value is to create 25 quadrats, but I find it hard to come up with reasonable explanation for using that or other values.
+
+Bottom-line is: it seems that our ant point pattern is inhomogenous, we'll need to use specific methods.
+
+A commonly used exploratory analysis of point pattern is the K-Ripley function. The idea is to count the number of neighbouring points within increasing distance from a focal point. If the point pattern follow Complete Spatial Randomness (CSR) then there is a known relationship between this number (K) and the distance considered (r). In R the code to achieve this on the ant nests point pattern is:
+
+```{r message=FALSE}
+ee_iso <- envelope(ant_pp,fun=Kest,funargs=list(correction="border"),global=TRUE)
+plot(ee_iso)
+```
+
+Here I derived an enveloppe around the expected ($K_{theo}(r)$) K values from simulated random point process. I also applied a border correction, see ?Kest for more informations on the different corrections available. I also use a global estimator for the enveloppe (global=TRUE) to ensure constant width at any distance (see http://book.spatstat.org/sample-chapters/chapter07.pdf). The observed curve ($K_{obs}(r)$) fall above the expected ones which means that there are more points than expected are within certain distance of one another, or in other words the points are more clustered than expected. If the observed curve would fall below the expected one then the points are more dispersed than expected. The function _Kest_ assume an homogenous or stationary intensity function, this means that by using _Kest_ we assume that the point pattern was generated by one homogenous intensity function characterized by the average intensity of our point pattern (_intensity(ant_pp)_). However as we saw before, we have some evidence that the point pattern of the ant nests is not homogenous, we should therefore take this into account by using a modified version of the Ripley's K function implemented in the _Kinhom_ function:
+
+```{r}
+ee_inhom <- envelope(ant_pp,fun=Kinhom,global = TRUE)
+plot(ee_inhom)
+```
+
+This time the observed curve is below the expected one for large distances, implying more dispersion in the nests than expected under CSR taking into account the inhomogeneity of the point pattern. The way _Kinhom_ works is by deriving an intensity estimate from the data (similar to density.ppp) and by weighting each point based on their estimated intensity. Note that the confidence band derived on these two graphs are *not* confidence intervals, see ?enveloppe for an explanation, alternatively you can use ?varblock or ?lohboot to derive bootstrapped confidence intervals.
+There are many more methods and functions available to explore point pattern, I choosed Ripley's K here as it is the most commonly used function.
+
+What do we take from this exploratory analysis:
+
+* The Ant nests show inhomogenous pattern
+* There is some evidence that at large distances ant nests are more spaced than expected from the estimated intensity function.
+
+Now we can move to the next step and model our point pattern.
+
+### Building Point Pattern Models
+
+```{r}
+
+
+#looking at the effect of Senecio jacobaea
+plot(effectfun(mm1,"Senecio_jacobaea"))
+
+#draw a cool perspective map
+pp <- predict(mm1)
+M<-persp(dens_all$Senecio_jacobaea,colin=pp,visible = TRUE,box=FALSE,apron = TRUE,theta=55,phi=25,shade=0.1,expand=6)
+perspPoints(ant_pp,Z=dens_all$Senecio_jacobaea,M=M,pch=20)
+```
