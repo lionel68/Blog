@@ -36,7 +36,7 @@ Examples that may or may not be suited to point pattern analysis:
 
 ## Point pattern in R
 
-The _spatstat_ package provide a large number of functions and classes to work with point pattern data. I will use an example dataset throughout to show some of the (numerous) capacities of this package. This dataset consist of the location of plant and ant nests within a coastal dune system in western europe. The datset was collected by B. Sercu and J. Goldberg plus UGent students, thanks to them for allowing me to use their dataset. You can download the data from this link.
+The _spatstat_ package provide a large number of functions and classes to work with point pattern data. I will use an example dataset throughout to show some of the (numerous) capacities of this package. This dataset consist of the location of plant and ant nests within a coastal dune system in western europe. The datset was collected by B. Sercu and J. Goldberg plus UGent students, thanks to them for allowing me to use their dataset. You can download the data from this link: https://github.com/Lionel68/Blog/tree/master/PointPatternAnalysis.
 
 ## Creating a point pattern from existing data
 
