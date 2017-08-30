@@ -110,7 +110,7 @@ plot_fit<-function(m,focal_var,inter_var=NULL,RE=NULL,offset=NULL,n=20,n_core=4,
   linkinv<-family(m)$linkinv
     
   #get the back transformed prediction together with the 95% CI for LM and GLM
-  if(cl=="glm" | cl=="lm"){
+  if(cl=="glm" | cl=="lm" | cl=="negbin"){
     pred$pred<-linkinv(pred$fit)
     pred$LC<-linkinv(pred$fit-1.96*pred$se.fit)
     pred$UC<-linkinv(pred$fit+1.96*pred$se.fit)
