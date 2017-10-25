@@ -37,7 +37,7 @@ anova_merMod<-function(model,w=FALSE,seed=round(runif(1,0,100),0),nsim=0,fixed=T
     #going first through the interactions and then through the main effects
     mat<-data.frame(term=attr(terms(model),"term.labels"),SSQ=anova(model)[,3],stringsAsFactors = FALSE)
     mat_inter<-mat[grep(":",mat$term),]
-    mat_main<-mat[!rownames(mat)%in%rownames(mat_inter),]
+    mat_main<-mat[!rownames(mat)%in% rownames(mat_inter),]
     if(!fixed){
       mat_main<-mat_main[do.call(order,list(-mat_main$SSQ)),]
       mat_inter<-mat_inter[do.call(order,list(-mat_inter$SSQ)),]
