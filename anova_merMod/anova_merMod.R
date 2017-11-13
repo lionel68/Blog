@@ -61,6 +61,7 @@ anova_merMod<-function(model,w=FALSE,seed=round(runif(1,0,100),0),nsim=0,fixed=T
     m_fit<-lapply(fs,function(x) lmer(x,data,REML=FALSE))
   }
   else if(fam=="binomial"){
+    data$weight <- weight
     m_fit<-lapply(fs,function(x) glmer(x,data,family=fam,weights=weight))
   }
   else if("Negative Binomial" %in% substr(fam,1,17)){
@@ -75,6 +76,7 @@ anova_merMod<-function(model,w=FALSE,seed=round(runif(1,0,100),0),nsim=0,fixed=T
       m_fit[[2]]<-lmer(formula(model),data,REML=FALSE)
     }
     else if(fam=="binomial"){
+      data$weight <- weight
       m_fit[[2]]<-glmer(formula(model),data,family=fam,weights=weight)
     }
     else if("Negative Binomial" %in% substr(fam,1,17)){
