@@ -15,6 +15,8 @@ relation <- function(X=5,C=0.3){
   return(out)
 }
 
+
+
 #turn a matrix with 0s and 1s into a series of R formulas
 #rows are ys and columns are xs
 formula_list <- function(mat){
@@ -55,15 +57,16 @@ model_list <- function(formL,data,fn=NULL){
 }
 
 #create a function to get important infos from a sem object
-grab_val <- function(modL,data,C,lavaan=FALSE){
+grab_val <- function(modL,data,lavaan=FALSE){
   if(lavaan){
     lv <- "lavaan"
     semObj <- sem.lavaan(modL,data)
-    sigM <-ifelse(!semObj@optim$converged,0,ifelse(semObj@test[[1]]$pvalue>=0.05,1,0)) #get the SEM p-value, giving a value of 0 if the model did not converged
+    sigM <-ifelse(lavInspect(semObj,"converged"),ifelse(lavInspect(semObj,"fit")["pvalue"]>=0.05,1,0),0) #get the SEM p-value, giving a value of 0 if the model did not converged
     semCoeff <- parameterestimates(semObj)[grep("^~$",parameterestimates(semObj)$op),] #get the model coefficients
     nbPaths <- nrow(semCoeff)
     nbSigPaths <- length(which(semCoeff$pvalue<=0.05)) #how many significant paths
     avgRsq <- mean(laply(modL,function(x) summary(x)$adj.r.squared))
+    #aic <- ifelse(lavInspect(semObj,"converged"),AICc(semObj),NA)
     #avgSigPaths <- mean(abs(semCoeff$est[semCoeff$pvalue<=0.05])) #the average values of significant paths
   }
   else{
@@ -75,15 +78,16 @@ grab_val <- function(modL,data,C,lavaan=FALSE){
     nbSigPaths <- length(which(semCoeff$p.value<=0.05)) #how many significant paths
     avgRsq <- mean(laply(modL,function(x) summary(x)$adj.r.squared))
     #avgSigPaths <- mean(abs(semCoeff$estimate[semCoeff$p.value<=0.05])) #the average values of significant paths
+    #aic <- sem.aic(modL,data,.progressBar = FALSE)$AICc
   }
-  out <- data.frame(N=nrow(data),X=ncol(data),C=C,type=lv,sigM=sigM,nbPaths=nbPaths,nbSigPaths=nbSigPaths,avgRsq=avgRsq)
+  out <- data.frame(N=nrow(data),X=ncol(data),sigM=sigM,nbPaths=nbPaths,nbSigPaths=nbSigPaths,avgRsq=avgRsq)
   return(out)
 }
 
 #a function to generate data based on diverse fidelity from the simulated list of models
-generate_data <- function(N,X,relL,formL,type,p_var){
+generate_data <- function(relL,formL,N=20,X=5,type="random",p_var=0.25,sd_eff=2.5,sd_res=1){
   if(type=="random"){
-    dat <- as.data.frame(matrix(rnorm(X*N,0,1),ncol=X,dimnames = list(1:N,paste0("X",1:X))))
+    dat <- as.data.frame(matrix(rnorm(X*N,0,sd_res),ncol=X,dimnames = list(1:N,paste0("X",1:X))))
   }
   else if(type=="exact"){
     dat <- data.frame(X1=runif(N,-2,2))
@@ -92,8 +96,8 @@ generate_data <- function(N,X,relL,formL,type,p_var){
       y <- allv[1]
       xs <- dat[,allv[2:length(allv)]]
       xs <- as.matrix(cbind(rep(1,N),xs))
-      coeff <- rcauchy(n = ncol(xs),0,2.5)
-      dat<-cbind(dat,rnorm(N,xs%*%coeff,1))
+      coeff <- rcauchy(n = ncol(xs),0,sd_eff)
+      dat<-cbind(dat,rnorm(N,xs%*%coeff,sd_res))
       colnames(dat)[ncol(dat)]<-y
       dat <- as.data.frame(apply(dat,2,scale))
     }
@@ -139,8 +143,8 @@ generate_data <- function(N,X,relL,formL,type,p_var){
       y <- allv[1]
       xs <- dat[,allv[2:length(allv)]]
       xs <- as.matrix(cbind(rep(1,N),xs))
-      coeff <- rcauchy(n = ncol(xs),0,2.5)
-      dat<-cbind(dat,rnorm(N,xs%*%coeff,1))
+      coeff <- rcauchy(n = ncol(xs),0,sd_eff)
+      dat<-cbind(dat,rnorm(N,xs%*%coeff,sd_res))
       colnames(dat)[ncol(dat)]<-y
       dat <- as.data.frame(apply(dat,2,scale))
     }
@@ -172,8 +176,8 @@ generate_data <- function(N,X,relL,formL,type,p_var){
       y <- allv[1]
       xs <- dat[,allv[2:length(allv)]]
       xs <- as.matrix(cbind(rep(1,N),xs))
-      coeff <- rcauchy(n = ncol(xs),0,2.5)
-      dat<-cbind(dat,rnorm(N,xs%*%coeff,1))
+      coeff <- rcauchy(n = ncol(xs),0,sd_eff)
+      dat<-cbind(dat,rnorm(N,xs%*%coeff,sd_res))
       colnames(dat)[ncol(dat)]<-y
       dat <- as.data.frame(apply(dat,2,scale))
     }
@@ -196,8 +200,8 @@ generate_data <- function(N,X,relL,formL,type,p_var){
       y <- allv[1]
       xs <- dat[,allv[2:length(allv)]]
       xs <- as.matrix(cbind(rep(1,N),xs))
-      coeff <- rcauchy(n = ncol(xs),0,2.5)
-      dat<-cbind(dat,rnorm(N,xs%*%coeff,1))
+      coeff <- rcauchy(n = ncol(xs),0,sd_eff)
+      dat<-cbind(dat,rnorm(N,xs%*%coeff,sd_res))
       colnames(dat)[ncol(dat)]<-y
       dat <- as.data.frame(apply(dat,2,scale))
     }
@@ -210,27 +214,31 @@ generate_data <- function(N,X,relL,formL,type,p_var){
 
 
 #put it all in one function to replicate over
-sim_sem <- function(N=20,X=5,C=0.3,type="random",p_var=0.25,lv=FALSE){
+sim_sem <- function(N=20,X=5,C=0.3,type="random",p_var=0.25,lv=FALSE,sd_eff = 2.5,sd_res = 1){
   relL <- relation(X=X,C=C)
   formL <- formula_list(relL)
   dagg <- to_dagitty(relL) #get DAG
-  dat <- generate_data(N,X,relL,formL,type,p_var)
+  dat <- generate_data(N=N,X=X,relL=relL,formL=formL,type=type,p_var=p_var,sd_eff=sd_eff,sd_res=sd_res)
   modL <- model_list(formL,dat)
-  out <- grab_val(modL,dat,C,lavaan=lv)
+  out <- grab_val(modL,dat,lavaan=lv)
   #get proportion of conditional independence violated
   ll <- localTests(dagg,dat)
   out$Local <- sum(ll$p.value < 0.05) / length(ll$p.value)
+  out$Sd_eff <- sd_eff
+  out$Sd_res <- sd_res
   return(out)
 }
 
 #a function to loop through the parameters
-sim_for <- function(sims,type="random"){
+sim_for <- function(sims){
   res <- NULL
   for(i in 1:nrow(sims)){
-    x <- as.numeric(sims[i,])
-    tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3],type=type,lv=x[4]))
+    type <- sims[i,1]
+    x <- as.numeric(sims[i,-1])
+    tmp <- replicate(100,sim_sem(N = x[1],X=x[2],C=x[3],type=type,lv=x[4], sd_eff = x[5], sd_res = x[6]))
     out <- as.data.frame(matrix(unlist(tmp),nrow = 100,byrow=TRUE,dimnames=list(1:100,attr(tmp,"dimnames")[[2]])))
     out$Exp <- i
+    out$C <- x[3]
     out$type <- type
     out$pkg <- ifelse(x[4],"lavaan","pcsem")
     res <- rbind(res,out)
