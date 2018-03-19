@@ -12,17 +12,21 @@ path_to_function <- "~/Desktop/Blog/GitFolder/SimSEM/"
 setwd(path_to_function)
 
 source("simSEM_function.R")
-#test over different sample size (N) and number of variables (X) with random data generation
-#ie there is no simulated signal in the data
+#test over different data generation type (Type), sample size (N), number of variables (X),
+#varying signal strength (sd_eff) and noise importance (sd_red).
+#This will return the full graphs shown in the Appendix of the manuscript.
+#main figures use sd_eff fixed at 2.5 and sd_res fixed at 1. 
+
+#the different parameter set
 sims <- expand.grid(Type=c("random","exact","shuffled","complex","simple"),N=seq(20,100,20),X=c(5,7,10),C=0.3,lv=c(FALSE,TRUE),sd_eff = c(1, 2.5, 5),sd_res = c(0.5, 1, 2))
 
 #for testing purposes
 #sims <- sims[sample(1:1170,10,replace = FALSE),]
 #for the random data type, no need to vary sd_eff idependenlty
 sims <- sims[!(sims$Type == "random" & sims$sd_eff %in% c(2.5,5)),]
-
+#run the code, see the code in the simSEM_function 
 res_pre <- sim_for(sims)
-
+#aggregate over the replications per parameter set
 res_pre %>%
   group_by(pkg,type,Exp,N,X,Sd_eff,Sd_res)%>%
   summarise(PropSigM=sum(sigM,na.rm=TRUE)/n(),NbPaths = sum(nbPaths),NbSigPaths=sum(nbSigPaths),
@@ -33,9 +37,11 @@ res_pre %>%
 write.table(res_all,"simSem_res.csv",row.names=FALSE)
 
 
-res_all <- read.csv("~/Desktop/Blog/GitFolder/SimSEM/simSem_res.csv",sep=" ")
+#res_all <- read.csv("~/Desktop/Blog/GitFolder/SimSEM/simSem_res.csv",sep=" ")
 res_all$Signal <- with(res_all,paste("sd_eff:",Sd_eff,"\nsd_res:",Sd_res,sep=" "))
 
+
+#make the figures
 gg1 <- ggplot(res_all,aes(x=N,y=PropSigM,color=type,linetype=pkg))+geom_path()+
   facet_grid(X~Signal) +
   labs(x="Sample size",y="Proportion of accepted models (p > 0.05)",
