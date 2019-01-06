@@ -1,56 +1,24 @@
 ##################
 
-# R script to reproduce the results in the submitted manuscript:
+# R script to plot the results from the simulations from the submitted manuscript:
 
 # How robust are Structural Equation Models to model mis-specification? A simulation study
 
 # author: Lionel Hertzog
 
-# date: 17.10.2018
+# date: 06.01.2019
 
 ########
 
-# load the libraries
-library(piecewiseSEM) # should be a version below 2.0 !!!!!!
-library(lavaan)
-library(igraph)
-library(dagitty)
-library(AICcmodavg)
-library(plyr)
+# note that you can re-run the simulations on your machine using the scripts simSEM_simulations.R and simSEM_function.R, you can also download the data used in the manuscript from: URL link
+
+## load the libraries
 library(tidyverse)
 
+## set the wd, point to where the github repo was cloned
+setwd("")
 
-
-# set the wd and load the helper functions
-path_to_function <- "~/Desktop/Blog/GitFolder/SimSEM/"
-setwd(path_to_function)
-
-source("scripts/simSEM_function.R")
-
-# create the parameter set to run the simulations on
-# test over different data generation type (Type), sample size (N), number of variables (X),
-# varying signal strength (sd_eff) and noise importance (sd_red).
-
-# will also need to re-run this with new generation of coefficients
-
-sims <- expand.grid(type=c("random","exact","shuffled","overspecified","underspecified"),
-                    N=c(seq(20,100,20),200,500,1000,5000,10000),
-                    X=c(5,7,10),
-                    C=0.3,
-                    p_var = 0.25,
-                    pkg=c("lavaan","pcsem"),
-                    sd_eff = c(1, 2.5, 5),
-                    sd_res = c(0.5, 1, 2),stringsAsFactors = FALSE)
-
-
-# for the random data type, no need to vary sd_eff idependenlty
-sims <- sims[!(sims$type == "random" & sims$sd_eff %in% c(2.5,5)),]
-
-# run the simulations, see the code in the simSEM_function
-res_pre <- sim_for(sims,n_rep=100)
-
-# write the output
-write.table(res_pre,"data/simSem_res_pre_rev.csv",row.names=FALSE)
+## first simulation batch
 
 # load back the simulation data
 res_pre <- read.csv("data/simSem_res_pre_rev.csv", sep = " ")
@@ -158,10 +126,12 @@ gg4 <- ggplot(res_all,aes(x=N,y=PropCond,color=type,linetype=pkg))+geom_path()+
 ggsave("figures/prop_cond_A_rev.png",gg4,width=30,height=15,unit="cm",dpi=100)
 #
 
+## second simulation batch
 
-# second set of simulations to compute and compare IC
+# load back saved data
+res_pre <- read.csv("data/res_pre_c2.csv",sep=" ")
 
-# new set of sims with more accurate IC comparisons
+# the parameter set used to generate the simulations
 sims_c <- expand.grid(N = c(seq(20,100,20),200,500,1000,5000,10000),
                     X = c(5,7,10),
                     C = 0.3,
@@ -169,20 +139,7 @@ sims_c <- expand.grid(N = c(seq(20,100,20),200,500,1000,5000,10000),
                     pkg = c("lavaan","pcsem"),
                     sd_eff = c(1, 2.5, 5),
                     sd_res = c(0.5, 1, 2))
-# 
-# 
-# # run the simulations, see the code in the simSEM_function 
-# n_rep <- 100
-# res_pre <- sim_for_c(sims_c,n_rep=n_rep) # still some bug lurking about all endogenous variables being conditionaly dependent
-# 
-# write.table(res_pre,"data/res_pre_c2.csv",row.names=FALSE)
-# 
-# # next step would be to get how often each scenarios are identified as the best
-# # so comparing for each rows the best model leading value such as: unspecified, exact, shuffled or overspecfied, then aggregate this per Exp as prop
-# 
-# load back saved data
-res_pre <- read.csv("data/res_pre_c2.csv",sep=" ")
-
+# add an ID to each line
 sims_c$Exp <- 1:nrow(sims_c)
 
 res_pre %>%
@@ -198,35 +155,12 @@ res_pre %>%
   group_by(Exp, N, X, sd_eff, sd_res, C, p_var, metric) %>% # group by Exp ID (ie rows in the sims_c dataframe)
   count(best_scenario) %>% # count how often each scenario pops out across the replicate within Exp ID
   mutate(prop = n / sum(n)) %>%
-  left_join(sims_c[,c("Exp","pkg")],by="Exp") -> dd # get the proportion
+  left_join(sims_c[,c("Exp","pkg")],by="Exp") %>% # get the proportion
+  mutate(Signal = paste0("sd_eff: ",Sd_eff,"\nsd_res: ",Sd_res)) -> dd 
 
 dd$best_scenario <- factor(dd$best_scenario,labels = c("none","overspecified","shuffled","exact","underspecified"))
 
-dd_aic <- subset(dd,metric=="AIC" & sd_eff == 2.5 & sd_res == 1)
-
-gg1 <- ggplot(dd_aic,aes(x=N,y=prop,color=best_scenario,linetype=pkg)) +
-  geom_line() +
-  facet_grid(~X) +
-  scale_x_log10() +
-  labs(title="AICc")
-
-
-dd_bic <- subset(dd,metric=="BIC" & sd_eff == 2.5 & sd_res == 1)
-
-gg2 <- ggplot(dd_bic,aes(x=N,y=prop,color=best_scenario,linetype=pkg)) +
-  geom_line() +
-  facet_grid(~X) +
-  scale_x_log10() +
-  labs(title="BIC")
-
-dd_hbic <- subset(dd,metric=="hbic" & sd_eff == 2.5 & sd_res == 1)
-
-gg3 <- ggplot(dd_hbic,aes(x=N,y=prop,color=best_scenario,linetype=pkg)) +
-  geom_line() +
-  facet_grid(~X) +
-  scale_x_log10() +
-  labs(title="hbic")
-
+## figure 5. proportion of replicates where each scenario was labelled best scenario
 dd_all <- subset(dd, sd_eff ==2.5 & sd_res == 1 & !is.na(dd$best_scenario))
 
 gg_all <- ggplot(dd_all,aes(x=N,y=prop,color=best_scenario,linetype=pkg)) +
@@ -239,3 +173,35 @@ gg_all <- ggplot(dd_all,aes(x=N,y=prop,color=best_scenario,linetype=pkg)) +
   theme(panel.grid.minor = element_blank())
 
 ggsave("figures/ic_metric_prop.png",gg_all,width=10,height=8)
+
+## appendix figures looking across signal / noise ratio for the different IC metrics separately
+dd_aic <- subset(dd,metric=="AIC")
+
+gg_aic <- ggplot(dd_aic,aes(x=N,y=prop,color=best_scenario,linetype=pkg)) +
+  geom_line() +
+  facet_grid(Signal~X) +
+  scale_x_log10() +
+  labs(title="AICc")
+
+ggsave("figures/aic_appendix.png",gg_aic, width = 10, height = 8)
+
+
+dd_bic <- subset(dd,metric=="BIC" & sd_eff == 2.5 & sd_res == 1)
+
+gg_bic <- ggplot(dd_bic,aes(x=N,y=prop,color=best_scenario,linetype=pkg)) +
+  geom_line() +
+  facet_grid(Signal~X) +
+  scale_x_log10() +
+  labs(title="BIC")
+
+ggsave("figures/bic_appendix.png",gg_bic,height=8,width=10)
+
+dd_hbic <- subset(dd,metric=="hbic" & sd_eff == 2.5 & sd_res == 1)
+
+gg_hibc <- ggplot(dd_hbic,aes(x=N,y=prop,color=best_scenario,linetype=pkg)) +
+  geom_line() +
+  facet_grid(Signal~X) +
+  scale_x_log10() +
+  labs(title="hbic")
+
+ggsave("figures/hbic_appendix.png",gg_hbic, width = 10, height = 8)
